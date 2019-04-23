@@ -14,7 +14,7 @@ baseurl: ""
 # Of course don't forget to change the username and projectname to YOUR username and project
 
 # Name of website
-title: Emily E. Kuehler
+title: Gabriel E. Cabrera 
 
 # Short description of your site
 description: Home
@@ -75,13 +75,13 @@ author:
 # If you want to add a new link that isn't here, you'll need to also edit the file _data/SocialNetworks.yml
 social-network-links:
   # rss: false
-  email: "ekuehler@gmail.com"
+  email: "gcabrerag@fen.uchile.cl"
   # facebook: daattali
-  github: emilykuehler
-  twitter: emilykuehler
+  github: gabocg
+  twitter: GaboC_g
 #  reddit: yourname
 #  google-plus: +DeanAttali
-  linkedin: emilykuehler
+  linkedin: 
 #  xing: yourname
 #  stackoverflow: "3943160/daattali"
 #  snapchat: deanat78
