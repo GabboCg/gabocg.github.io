@@ -1,0 +1,170 @@
+---
+title: "Open Policing Code Walk Through"
+author: emily-kuehler
+post_date: 2019-03-20
+permalink: /open-policing-code-walkthrough/
+categories: tidy-tuesday
+output: jekyllthat::jekylldown
+excerpt_separator: <!--more-->
+---
+
+![wisc\_plot](https://raw.githubusercontent.com/emilykuehler/tidytuesday/master/open-policing/wisconsin.png)
+
+Stanford Open Policing Tidy Tuesday Code Walk Through
+-----------------------------------------------------
+
+For this week's Tidy Tuesday, the data came from the excellent [Stanford Open Policing Project](https://openpolicing.stanford.edu/) First up: loading in the necessary packages and reading in the dataset.
+
+``` r
+library(tidyverse); library(maps); library(viridis)
+
+url <- "https://raw.githubusercontent.com/5harad/openpolicing/master/results/data_for_figures/combined_data.csv"
+combined_data <- readr::read_csv(url)
+```
+
+Next, let's take a quick look at the structure of the dataset.
+
+``` r
+glimpse(combined_data)
+```
+
+    ## Observations: 2,688
+    ## Variables: 11
+    ## $ location                     <chr> "APACHE COUNTY", "APACHE COUNTY", "…
+    ## $ state                        <chr> "AZ", "AZ", "AZ", "AZ", "AZ", "AZ",…
+    ## $ driver_race                  <chr> "Black", "Hispanic", "White", "Blac…
+    ## $ stops_per_year               <dbl> 266, 1008, 6322, 1169, 9453, 10826,…
+    ## $ stop_rate                    <dbl> 0.995, 0.262, 0.431, 0.230, 0.259, …
+    ## $ search_rate                  <dbl> 0.077, 0.053, 0.017, 0.047, 0.037, …
+    ## $ consent_search_rate          <dbl> NA, NA, NA, NA, NA, NA, NA, NA, NA,…
+    ## $ arrest_rate                  <dbl> 0.016, 0.018, 0.006, 0.015, 0.010, …
+    ## $ citation_rate_speeding_stops <dbl> NA, NA, NA, NA, NA, NA, NA, NA, NA,…
+    ## $ hit_rate                     <dbl> NA, NA, NA, NA, NA, NA, NA, NA, NA,…
+    ## $ inferred_threshold           <dbl> NA, NA, NA, NA, NA, NA, NA, NA, NA,…
+
+It looks like we've got summary data for variables such as `stop_rate`, `arrest_rate`, `search_rate` among others, grouped by race. Let's see where the researchers were able to collect data from:
+
+A couple other things important thing here: states are listed with their state code, not their full name and the location corresponds to a county, formatted `UPPER CASE NAME COUNTY`.
+
+### Let's make a map!
+
+So with data grouped by state, county and race, this seems like a great opportunity to practice some map-making. In particular, we can visualize the difference between arrest rates of whites and non-whites across counties.
+
+However, being somewhat familiar with `maps` and `ggplot` packages I can see that this will require some extra cleaning. We saw that in our open policing dataset, states were listed using a two letter code. Data from the `maps` package uses full state names. So we need to add full state names to the policing dataset in order to do a successful join. Luckily that data is readily available.
+
+``` r
+#make dataframe with corresponding state names, state codes
+data('state')
+states_df <- data.frame(state_code = state.abb, state_name = state.name, stringsAsFactors = F) %>% 
+  mutate(state_name = tolower(state_name))
+
+#get county level map data
+county_data <- map_data("county") %>% 
+  rename(county = subregion,
+         state_name = region)
+```
+
+### Cleaning Up Inconsistencies Between ggplot and Open Policing Dataset
+
+The other inconsistency between the `maps` package and the open policing dataset was in the formatting of counties. This was a little trickier to solve. The `maps` package simply gives you `lower case name`, while the open policing gives you `UPPER CASE NAME COUNTY`. My first thought was to just use stringr::str\_sub and cut off the last 7 slots of the string, but I was worried there would be data points that didn't contain `COUNTY` at the end. There is almost certainly a good way to do this with regex and I actually don't think it would be very complicated, but, ugggh, regex (I'll come back to it...). What I did instead wasn't the most elegant, but did the job:
+
+There was one county (St. Croix), that I had to manually adjust because there was a period after `st` in one dataset, but not the other.
+
+``` r
+combined_data_clean <- combined_data %>%
+  separate(location, c('col1','col2','col3','col4'), sep = ' ') %>% 
+  mutate(col2 = ifelse(col2 == 'COUNTY', ' ', col2),
+         col3 = ifelse(col3 == 'COUNTY', ' ', col3),
+         col4 = ifelse(col4 == 'COUNTY', ' ', col4),
+         col2 = ifelse(is.na(col2), ' ', col2),
+         col3 = ifelse(is.na(col3), ' ', col3),
+         col4 = ifelse(is.na(col4), ' ', col4)) %>% 
+  unite(county, c('col1','col2','col3','col4'), sep = ' ') %>% 
+  mutate(county = tolower(str_trim(county))) %>%
+  mutate(county = ifelse(county=='st. croix', 'st croix', county)) %>% 
+  rename(state_code = state) %>% 
+  left_join(states_df, by=c('state_code'))
+```
+
+### Merge Datasets
+
+So now we have a dataset that plays nicely with `ggplot2` and `maps` and we can easily merge the two which will then allow us to create a good choropleth map. Here, I filtered the data down to the state of Wisconsin as I had some prior knowledge of large racial disparities (particularly between blacks and whites) in the state using economic indicators so I wanted to see if this held true for arrest rates.
+
+``` r
+county_data_combined <- county_data %>% 
+  left_join(combined_data_clean, by=c('state_name','county')) %>%
+  filter(state_name=='wisconsin') %>% 
+  select(long, lat, group, state_name, driver_race, county,stops_per_year, stop_rate, search_rate, arrest_rate)
+```
+
+### Some More Calculations
+
+What I'd ultimately wanted to do was visualize the difference in arrest rates between whites and non-whites across counties with a map. So, I still needed to do a bit more wrangling to make the calculations.
+
+``` r
+county_data_white <- county_data_combined %>% 
+  filter(driver_race=='White') %>% 
+  select(-driver_race) %>% 
+  rename(stops_per_year_white = stops_per_year,stop_rate_white = stop_rate, 
+         search_rate_white = search_rate, arrest_rate_white = arrest_rate)
+
+county_data_hispanic <- county_data_combined %>% 
+  filter(driver_race=='Hispanic') %>% 
+  select(-driver_race) %>% 
+  rename(stops_per_year_hisp = stops_per_year,stop_rate_hisp = stop_rate, 
+         search_rate_hisp = search_rate, arrest_rate_hisp = arrest_rate)
+
+county_data_black <- county_data_combined %>% 
+  filter(driver_race=='Black') %>% 
+  select(-driver_race) %>% 
+  rename(stops_per_year_black = stops_per_year,stop_rate_black = stop_rate, 
+         search_rate_black = search_rate, arrest_rate_black = arrest_rate)
+
+county_all <- county_data_black %>% 
+  inner_join(county_data_hispanic, by=c('long', 'lat', 'group', 'state_name','county')) %>% 
+  inner_join(county_data_white, by=c('long', 'lat', 'group', 'state_name','county')) %>% 
+  group_by(state_name, county) %>% 
+  mutate(arrest_rate_minority = (arrest_rate_black + arrest_rate_hisp) / 2,
+         arrest_rate_delta_black = arrest_rate_black - arrest_rate_white,
+         arrest_rate_delta_hisp = arrest_rate_hisp - arrest_rate_white,
+         arrest_rate_delta_minority = arrest_rate_minority - arrest_rate_white,
+         stop_rate_minority = (stop_rate_black + stop_rate_hisp) / 2,
+         stop_rate_delta_black = stop_rate_black - stop_rate_white,
+         stop_rate_delta_hisp = stop_rate_hisp - stop_rate_white,
+         stop_rate_delta_minority = stop_rate_minority - stop_rate_white)
+```
+
+### Plot the Map
+
+After all that, we're ready to make the map.
+
+``` r
+wisc_plot <-ggplot(aes(x = long,y = lat, fill = arrest_rate_delta_minority, group = group), 
+                   data = county_all) +
+  geom_polygon(size = 0.3, color = 'black') +
+  coord_map(projection = 'albers', lat0 = 39, lat1 = 45) + 
+  scale_fill_viridis(option = 'plasma') +
+  theme_minimal() +
+  theme(text = element_text(color = 'white', family = 'Andale Mono'),
+        panel.background = element_rect(fill = 'black'),
+        legend.background = element_rect(fill = 'black'),
+        legend.position = 'bottom',
+        plot.title = element_text(size = 18),
+        plot.background = element_rect(color = 'black', fill = 'black'),
+        axis.text = element_blank(), 
+        axis.ticks = element_blank(), 
+        axis.line = element_blank(), 
+        axis.title = element_blank(), 
+        panel.grid = element_blank()) +
+  guides(fill = guide_colorbar(
+    title = "Arrest Rate Difference",
+    title.position = "top" ,
+    title.hjust = 0.5,
+    barwidth = 16,
+    barheight = 0.5
+  )) +
+  labs(title = 'Disparity in Arrest Rates\nBetween Whites and\nMinorites in Wisconsin',
+       caption = 'Data: Stanford Open Policing Project')
+```
+
+![wisc\_plot](https://raw.githubusercontent.com/emilykuehler/tidytuesday/master/open-policing/wisconsin.png)

@@ -1,0 +1,166 @@
+---
+title: "GoBike Analysis"
+author: author
+post_date: 2019-04-05
+permalink: /gobike-analysis/
+categories: dataviz, tidyverse
+output: jekyllthat::jekylldown
+always_allow_html: yes
+excerpt_separator: <!--more-->
+---
+
+#Ford GoBike: Bike Share For All Analysis
+
+Ford GoBike, a San Francisco Bay area bike sharing program launched in June 2017 amid much controversy. Anecdotes of slashed tires and graffiti were common. Many neighbors and businesses voiced complaints about the loss of parking spots. A section of the Mission District, spearheaded by neighborhood group Calle 24, refused stations citing gentrification fears.
+
+For their part, Ford GoBike has offered 'Bike Share For All,' a membership plan for low-income residents. Residents are eligible for this program if they also qualify for Calfresh, SFMTA (Low Income) Lifeline Passes or PG&E CARE utility discount.
+
+Eligible residents can purchase a \$5 annual membership for their first year, which increases in cost the second year to $5 per month. Included in membership are the first 60 minutes of each trip.
+
+So while Ford GoBike has made this program available, have they done enough outreach to make it accessible? Are low-income residents actually making use of the program? Fortunately, Ford GoBike releases a dataset of trip history, which includes a variable which identifies whether or not a given ride has been taken by a user who participating in the Bike Share For All program. I decided to take a look into the dataset and check out how the Bike Share For All program was working throughout 2018. While the program has been available to residents since the launch of the bike sharing program in June 2017, public data with respect to this program is only available starting in January 2018.
+
+```{r load_data, echo=T, results='hide', warning=FALSE, message=F}
+library(tidyverse); library(lubridate); library(maps); library(ggmap); library(leaflet); library(gridExtra)
+
+bikes_sf <- readRDS('~/Desktop/ford-gobike/data/ford_go_bikes_clean.rds')
+
+sfbikes_clean <- bikes_sf %>%
+  filter(!is.na(bike_share_for_all_trip))
+```
+
+```{r colors_theme, echo=T, warning=FALSE, message=FALSE}
+#dark blue, light blue, med green, lime green  
+ford_pal <- c('#053678','#199DDB','#8CB741', '#8CB741')
+
+ford_font <- 'Raleway'
+
+ford_theme <- my_theme <- theme(text = element_text(family = ford_font),
+      rect = element_rect(fill = 'white'),
+      plot.background = element_rect(fill = 'white', color = NA),
+      panel.background = element_rect(fill = 'white', color = NA),
+      panel.border = element_blank(),
+      legend.background = element_rect(fill = 'white', color = NA),
+      legend.key = element_rect(fill = 'white'),
+      plot.caption = element_text(size = 6),
+      axis.ticks = element_blank(),
+      strip.background = element_blank(),
+      strip.text = element_text(family = ford_font, color = "#22211d", 
+                                hjust = 0, size = rel(1.1)))
+```
+
+## How Is Bike Share For All Used And Who Uses It?
+
+The Ford GoBike dataset identified each ride as a ride taken either by a Subscriber or Customer where a Subscriber is a user who is a member of one of the monthly plans, while a Customer is a casual user who has taken a ride using the Single Ride or Daily Access Pass program. I created a new variable user_type_share, which broke down the Subscriber rides into Subscriber-For All, rides taken by users who were members of the Bike Share For All Program and Subscriber-General, rides taken by users who have general monthly subscriptions. Let's take a quick look at usage by rider type:
+
+```{r usage_by_day, echo=T, warning=FALSE, message=FALSE}
+sfbikes_clean %>% 
+  group_by(user_type_share, start_day_of_week) %>% 
+  summarise(total = n(),
+            avg_usg = total / 52) %>% 
+  ggplot(aes(x=start_day_of_week, y=avg_usg, group = user_type_share, col = user_type_share)) +
+    geom_line(size = 2) +
+    geom_point(shape = 21, fill = 'white', size = 4, show.legend = F) +
+    scale_color_manual(values = ford_pal, 
+                       name = "User Type",
+                       labels = c('Casual User', 'Bike Share For All', 'General Subscriber')) +
+    labs(title = "GoBike Usage By Day",
+         subtitle = 'Segmented By User Type',
+         x="Day of Week", y="Avg Number of Rides",
+         caption = "Data Source: Ford GoBike")
+```
+
+We see that the majority of rides are taken by general subscribers (i.e. riders paying full-price in either the annual or monthly subscription program). These are the riders who have made the largest investment in the program and likely have the largest incentive for sustained use. Because of the way Ford anonymized data (no user ids were provided), it was not possible to easily separate out rides by individual users. Having this data would have allowed a fuller picture of how different plans are being used. For example, without user id data, we cannot see what percentage of general subscribers take rides on a given day. However, we can still get some valuable information about usage from the anonymized data.
+
+```{r usage_weekday_vs_weekend, echo=T, warning=FALSE, message=FALSE}
+weekday <- sfbikes_clean %>%
+  filter(weekday == 'Weekday') %>% 
+  group_by(user_type_share, start_hour_int) %>% 
+  summarise(total = n()) %>% 
+ggplot(aes(x=start_hour_int, y=total, group = user_type_share, color = user_type_share)) +
+  geom_line(size=1) +
+  geom_vline(xintercept = c(8,17), linetype = 2, color='gray30') +
+  scale_color_manual(values = ford_pal, name='User Type') +
+  scale_x_continuous(breaks = seq(0,23)) +
+  annotate("text", label = "Peak Commuting\nTimes", family = ford_font, x = 12.5, y = 30000) +
+  geom_segment(xend = 8.25, x = 11, y = 30000, yend = 30000, col = "gray30", arrow = arrow(angle = 30, length = unit(2, "mm"))) +
+  geom_segment(xend = 16.75, x = 14, y = 30000, yend = 30000, col = "gray30", arrow = arrow(angle = 30, length = unit(2, "mm"))) +
+  labs(x = "Hour of Day", y = "Total Rides",
+       title = "Number of Rides By Hour and User Type",
+       caption = "Data Source: Ford GoBike") +
+  theme(panel.border = element_rect(color = "gray90", fill = NA),
+        legend.position = c(0.03,0.97),
+        legend.justification = c(0,1),
+        legend.background = element_rect(color = "gray90"))
+
+
+test_df <- sfbikes_clean %>%
+  filter(weekday == 'Weekend') %>% 
+  group_by(user_type_share, start_hour_int) %>% 
+  summarise(total = n())
+
+  
+weekend <-   ggplot() +
+    geom_rect(aes(xmin=12,xmax=16,ymin=-Inf,ymax=Inf), fill='grey30', alpha=0.3) +
+    geom_line(aes(x=start_hour_int, y=total, group = user_type_share, color = user_type_share),
+              data=test_df, size=1) +
+    scale_color_manual(values = ford_pal, name='User Type') +
+    scale_x_continuous(breaks = seq(0,23)) +
+    annotate("text", label = "Peak Weekend\nUsage", family = ford_font, x = 14, y = 15000) +
+    geom_segment(xend = 12.1, x = 12.75, y = 15000, yend = 15000, col = "black", arrow = arrow(angle = 30, length = unit(2, "mm")), data = test_df) +
+    geom_segment(xend = 15.9, x = 15.25, y = 15000, yend = 15000, col = "black", arrow = arrow(angle = 30, length = unit(2, "mm")), data = test_df) +
+    labs(x = "Hour of Day", y = "Total Rides",
+       title = "Number of Rides By Hour and User Type",
+       caption = "Data Source: Ford GoBike") +
+    theme(panel.border = element_rect(color = "gray90", fill = NA),
+        legend.position = c(0.03,0.97),
+        legend.justification = c(0,1),
+        legend.background = element_rect(color = "gray90"))
+weekend
+
+grid.arrange(weekday, weekend)
+```
+
+```{r map_test}
+get_most_popular_stations <- function(grouped_df, num_stations, user_type) {
+  df <- grouped_df %>%
+    ungroup() %>%
+    filter(user_type_share==user_type) %>%
+    rename(lat = start_station_latitude, lng = start_station_longitude) %>%
+    arrange(desc(rides_per_day)) %>%
+    top_n(num_stations, rides_per_day)
+  return (df)
+}
+
+grouped_by_station <- sfbikes_clean %>%
+  group_by(start_station_id, start_station_name, start_station_latitude, start_station_longitude, user_type_share) %>%
+  summarise(first_station_ride = min(start_time),
+            last_station_ride = max(start_time),
+            time_station_open = ceiling(as.numeric(last_station_ride - first_station_ride)),
+            total_rides = n(),
+            rides_per_day = total_rides / time_station_open) %>%
+  filter(time_station_open >= 90 & !is.na(start_station_id))
+
+most_popular_general <- get_most_popular_stations(grouped_by_station, 20, 'Subscriber-General')
+most_popular_bsfa <- get_most_popular_stations(grouped_by_station,20, 'Subscriber-For All')
+most_popular_casual <- get_most_popular_stations(grouped_by_station,20,'Customer')
+
+
+leaflet() %>%
+  setView(lng = -122.2543, lat = 37.86936, zoom = 14) %>%
+  addProviderTiles("CartoDB.Positron") %>% 
+  addCircles(
+    data = most_popular_bsfa,
+    radius = most_popular_bsfa$rides_per_day * 5,
+    weight = 0.75,
+    popup = paste0("<strong>Station: </strong>", most_popular_bsfa$start_station_name, "</br>",
+                   "<strong>Rides Per Day: </strong>", round(most_popular_bsfa$rides_per_day,2))) %>%
+  addMarkers(
+    lng=-122.2603, lat=37.8715, 
+    popup = 'UC Berkeley'
+  )
+```
+
+
+
+
+
