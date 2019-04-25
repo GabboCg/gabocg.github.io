@@ -25,7 +25,7 @@ description: Home
 navbar-links:
   Blog: "index"
   Data Viz:
-    - SF311: "https://emilykuehler.shinyapps.io/sf311-response-app/"
+    - SF311: "https://gcabrerag.rbind.io/"
   About Me: "aboutme"
   #Resources:
   #  - Beautiful Jekyll: "http://deanattali.com/beautiful-jekyll/"
