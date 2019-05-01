@@ -24,9 +24,10 @@ description: Home
 # List of links in the navigation bar
 navbar-links:
   Blog: "index"
-  tidytuesday (?): 
-  Data Viz:
-    - SF311: "https://gcabrerag.rbind.io/"
+  Tidytuesday (?): 
+  Website:
+    - blogdown: "https://gcabrerag.rbind.io/"
+    - radix: 
   About Me: "aboutme"
   #Resources:
   #  - Beautiful Jekyll: "http://deanattali.com/beautiful-jekyll/"
