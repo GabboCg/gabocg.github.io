@@ -24,6 +24,7 @@ description: Home
 # List of links in the navigation bar
 navbar-links:
   Blog: "index"
+  tidytuesday (?): 
   Data Viz:
     - SF311: "https://gcabrerag.rbind.io/"
   About Me: "aboutme"
